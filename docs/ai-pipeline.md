@@ -2,7 +2,8 @@
 
 ## Overblik
 
-AI-analysen køres asynkront som en MediatR event handler, der trigges når en billet oprettes.  
+AI-analysen køres asynkront som et **Hangfire-job**, der enqueues når en billet oprettes.
+`POST /api/tickets` enqueuer jobbet i samme transaktion som EF-gemningen og returnerer `201` med det samme.
 Hele pipelinen skal færdiggøres inden for **45 sekunder** — ellers sættes billetten til manuel behandling.
 
 ## Sekvens
@@ -10,33 +11,34 @@ Hele pipelinen skal færdiggøres inden for **45 sekunder** — ellers sættes b
 ```
 POST /api/tickets
     │
-    ├─► Opret Ticket (status: Ny)
-    └─► Udgiv TicketCreatedEvent (MediatR)
+    ├─► Opret Ticket (status: Ny) + gem
+    └─► BackgroundJob.Enqueue<TicketAiAnalysisJob>(ticketId)   (samme transaktion)
               │
               ▼
-    TicketAiAnalysisHandler
+    TicketAiAnalysisJob
               │
               ├─► Sæt status → UnderAiAnalyse
               │
               ├─► [EMBEDDING]
-              │   Embed Subject + Description
-              │   via Semantic Kernel text embedding
+              │   Embed Subject + Description via
+              │   Microsoft.Extensions.AI IEmbeddingGenerator
               │
-              ├─► [VECTOR SEARCH]
-              │   Søg Qdrant — top-3 artikler
-              │   med similarity score >= 0.70
-              │   (ingen hits → brug tom kontekst)
+              ├─► [VEKTORSØGNING — SQL Server]
+              │   SELECT TOP 3 … VECTOR_DISTANCE('cosine', Embedding, @query) AS Distance
+              │   FROM KnowledgeArticles WHERE IsActive = 1 ORDER BY Distance
+              │   Behold kun hits med similarity >= 0.70  (cosine-distance <= 0.30)
+              │   (ingen hits → tom kontekst)
               │
               ├─► [PROMPT BYGNING]
               │   System prompt + artikel-kontekst + billet-tekst
               │
               ├─► [LLM KALD]
-              │   Kald Claude via Semantic Kernel
-              │   Structured output (se schema nedenfor)
+              │   IChatClient → Claude, structured output (se schema nedenfor)
               │
               ├─► [PERSISTERING]
-              │   Gem AiAnalysis med alle felter
+              │   Gem AiAnalysis (inkl. SourceArticles-navigation)
               │   Inkrementer TimesUsedInRag på brugte artikler
+              │   Map SuggestedCategory → Category → sæt Ticket.CategoryId
               │
               ├─► [PRIORITETSBEREGNING]
               │   Anvend forretningsregler (se forretningsregler.md)
@@ -49,8 +51,7 @@ POST /api/tickets
 
 ## Structured Output Schema
 
-LLM instrueres til at returnere præcis dette JSON-format.  
-Brug Semantic Kernels structured output eller `JsonSchemaExporter` til at håndhæve det.
+LLM instrueres til at returnere præcis dette JSON-format. Brug `Microsoft.Extensions.AI`'s structured output (`ChatOptions` med JSON-schema) til at håndhæve det.
 
 ```json
 {
@@ -65,8 +66,10 @@ Brug Semantic Kernels structured output eller `JsonSchemaExporter` til at håndh
 }
 ```
 
-Gyldige værdier for `category`: `Fakturering`, `TekniskFejl`, `Konto`, `Generelt`, `Ukendt`  
+Gyldige værdier for `category` (= `AiCategory`-enum): `Fakturering`, `TekniskFejl`, `Konto`, `Generelt`, `Ukendt`
 Gyldige værdier for `sentiment`: `Positiv`, `Neutral`, `Negativ`, `TydeligFrustreret`
+
+`category` er AI'ens faste klassifikations-skema og er adskilt fra `Category`-tabellen. I persisterings-trinet gemmes værdien som `AiAnalysis.SuggestedCategory` og mappes til en seeded `Category`-række, hvis Id sættes på `Ticket.CategoryId`.
 
 ## System Prompt (skabelon)
 
@@ -92,11 +95,12 @@ Beskrivelse: {{DESCRIPTION}}
 
 ## RAG-søgning
 
-- **Embedding model:** `text-embedding-3-small` (OpenAI) eller tilsvarende via Semantic Kernel
-- **Vector DB:** Qdrant, collection: `knowledge-articles`
-- **Søgestrategi:** Cosine similarity, top-3 resultater
-- **Minimumsscore:** 0.70 — artikler under denne tærskel udelukkes
+- **Embedding-model:** `text-embedding-3-small` (1536 dim) eller tilsvarende via `IEmbeddingGenerator`
+- **Lager:** SQL Server 2025 `VECTOR`-kolonne på `KnowledgeArticle.Embedding` — ingen separat vector-DB
+- **Søgestrategi:** `VECTOR_DISTANCE('cosine', …)`, `ORDER BY` distance, `TOP 3`
+- **Minimumsscore:** similarity 0.70 (dvs. cosine-distance ≤ 0.30) — artikler under tærsklen udelukkes
 - **Fallback:** Hvis ingen artikler rammer tærsklen, genereres svar uden kontekst
+- **Indeksering:** Embeddings (re)beregnes af et Hangfire-job ved oprettelse/opdatering af artikler
 
 ## Fejlhåndtering
 
@@ -104,8 +108,10 @@ Beskrivelse: {{DESCRIPTION}}
 |---|---|
 | LLM timeout (> 45 sek) | Status → `ÅbenUtildelt`, prioritet → `Høj`, intern note om timeout |
 | Ugyldig JSON fra LLM | Retry én gang, derefter fallback til manuel behandling |
-| Qdrant utilgængelig | Spring RAG over, kald LLM uden kontekst |
+| Vektorsøgning fejler | Spring RAG over (try/catch om VECTOR-query'en), kald LLM uden kontekst |
 | Konfidensscore < 0.6 | Kategori → `Ukendt`, prioritet → `Høj` |
+
+Hangfire's egne retries dækker transiente fejl i jobbet; ovenstående er de domæne-specifikke fallbacks.
 
 ## Feedback-loop
 

@@ -1,90 +1,68 @@
 # Arkitektur
 
-## Løsningsstruktur (Clean Architecture)
+## Løsningsstruktur (simpel, feature-orienteret)
 
-\`\`\`
-SupportSystem.sln
-├── src/
-│   ├── SupportSystem.Domain/          # Entiteter, enums, domænelogik, interfaces
-│   ├── SupportSystem.Application/     # Use cases (CQRS commands/queries), MediatR handlers
-│   ├── SupportSystem.Infrastructure/  # EF Core, Vector DB, AI-klienter, baggrundsjobs
-│   └── SupportSystem.Api/             # ASP.NET Core Minimal API, endpoints, middleware
-└── tests/
-    ├── SupportSystem.Domain.Tests/
-    ├── SupportSystem.Application.Tests/
-    └── SupportSystem.Integration.Tests/
-\`\`\`
+Projektet er bevidst holdt simpelt: **ét app-projekt** organiseret efter feature (vertical slices) i stedet for tekniske lag. Aspire tilføjer kun orkestrerings-scaffolding (`apphost.cs` + `ServiceDefaults`) — det er ikke en genindførelse af lag-arkitektur.
 
-## Lagoversigt
+```
+ai-helpdesk/
+├── apphost.cs                      # Single-file Aspire AppHost (IKKE et projekt)
+├── SupportSystem.ServiceDefaults/  # OpenTelemetry, health checks, resilience (delt projekt)
+├── SupportSystem/                  # Selve appen — ét projekt
+│   ├── Domain/                     # Entiteter, enums, forretningslogik (status-maskine, kalkulatorer)
+│   ├── Features/                   # Vertical slices: endpoint + handler + validator + DTOs pr. use case
+│   │   ├── Tickets/
+│   │   ├── Agents/
+│   │   └── Admin/
+│   ├── Data/                       # SupportDbContext, EF-konfigurationer, migrations
+│   ├── Ai/                         # Embedding, LLM-kald, pipeline-job, prompt-bygning
+│   └── Program.cs                  # DI, middleware, endpoint-registrering
+└── SupportSystem.Tests/            # xUnit
+```
 
-### Domain
-Ingen afhængigheder til andre lag. Indeholder:
-- Entiteter (`Ticket`, `AiAnalysis`, `Message`, `KnowledgeArticle`, `Agent`)
-- Enums (`TicketStatus`, `Priority`, `Sentiment` m.fl.)
-- Domænelogik og invarianter (status-maskine, prioritetsberegning)
-- Interfaces (`ITicketRepository`, `IKnowledgeArticleRepository`)
-- Domain Events (`TicketCreatedEvent`, `TicketEscalatedEvent`)
+## Designprincipper
 
-### Application
-Afhænger kun af Domain. Indeholder:
-- CQRS Commands og Queries (MediatR)
-- Event Handlers
-- Applikationsservices
-- DTOs og mapping
-- Valideringslogik (FluentValidation)
-
-### Infrastructure
-Afhænger af Domain og Application. Indeholder:
-- EF Core DbContext og konfigurationer
-- Repository-implementationer
-- Qdrant Vector DB-klient og embedding-service
-- AI-klienter (Semantic Kernel)
-- Hangfire baggrundsjobs
-- Serilog-konfiguration
-
-### Api
-Afhænger af Application (og Infrastructure for DI-registrering). Indeholder:
-- Minimal API endpoint-definitioner
-- Middleware (fejlhåndtering, autentifikation)
-- Swagger/OpenAPI-konfiguration
-- Program.cs og DI-setup
+- **Ingen mediator, ingen bus.** Use cases er almindelige handler-/service-klasser der injectes direkte. Ingen MediatR.
+- **Rich domain model.** Forretningslogik (status-maskine, prioritets- og SLA-beregning, invarianter) bor som metoder på entiteterne i `Domain/`, ikke i handlers. Det holder logikken testbar uden infrastruktur.
+- **Async arbejde via Hangfire.** AI-analyse, embedding-opdatering, SLA-breach og lås-oprydning kører som Hangfire-jobs på SQL Server-storage — ikke som in-process events.
+- **Ét datalager.** SQL Server 2025 rummer både relationelle data og vektorer (native `VECTOR`-type). Ingen separat vector-database.
 
 ## Teknologivalg
 
 | Teknologi | Valg | Begrundelse |
 |---|---|---|
+| Orkestrering | .NET Aspire (single-file `apphost.cs`) | Starter SQL Server, injecter connection strings, dashboard med logs/traces/metrics |
 | Web framework | ASP.NET Core Minimal API | Letvægts, moderne .NET tilgang |
 | ORM | Entity Framework Core | Standard i .NET-økosystemet |
-| Database (dev) | SQLite | Ingen opsætning lokalt |
-| Database (prod) | SQL Server / PostgreSQL | Skalérbarhed |
-| Mediator | MediatR | CQRS og Domain Events |
-| Validering | FluentValidation | Deklarativ og testbar |
-| AI-orkestration | Semantic Kernel | Microsoft-støttet, Anthropic-kompatibel |
-| Vector DB | Qdrant | Open source, god .NET-klient |
-| Baggrundsjobs | Hangfire | Simpel opsætning, dashboard inkluderet |
-| Logging | Serilog | Struktureret logging |
+| Database | SQL Server 2025 (dev + prod) | Native `VECTOR`-type → data og embeddings ét sted; LocalDB/container i dev |
+| Vektorsøgning | SQL Server `VECTOR_DISTANCE` | Indbygget cosine-søgning — ingen ekstern vector-DB |
+| Validering | FluentValidation | Deklarativ; kaldes via endpoint-filter |
+| AI-klient | Microsoft.Extensions.AI | `IChatClient` (Claude) + `IEmbeddingGenerator` — let abstraktion uden Semantic Kernel |
+| AI-model | Anthropic Claude | Chat + structured output |
+| Baggrundsjobs | Hangfire (SQL Server storage) | Retries, dashboard, transaktionel enqueue sammen med EF |
+| Logging | Microsoft.Extensions.Logging + OpenTelemetry | Struktureret logging via built-in + OTel; vist i Aspire-dashboard |
 | Test | xUnit + FluentAssertions + Bogus | Standard .NET teststack |
 
 ## Kommunikationsflow
 
-\`\`\`
+```
 HTTP Request
     │
     ▼
-Minimal API Endpoint
+Minimal API Endpoint  ──►  FluentValidation (endpoint-filter)
     │
     ▼
-MediatR Command/Query
+Feature Handler (almindelig klasse, injectet)
     │
-    ├──► Command Handler (Application)
-    │         │
-    │         ├──► Domain logic
-    │         ├──► Repository (Infrastructure)
-    │         └──► Domain Event → MediatR Notification
-    │                   │
-    │                   └──► Event Handler (f.eks. AI-analyse)
+    ├──► Domain-logik (entitetsmetoder)
+    ├──► SupportDbContext (EF Core)
     │
-    └──► Query Handler (Application)
-              │
-              └──► Repository / DbContext (read-side)
-\`\`\`
+    └──► (ved oprettelse) BackgroundJob.Enqueue → Hangfire
+                              │
+                              ▼
+                    TicketAiAnalysisJob
+                      embedding → vektorsøgning (SQL) → Claude →
+                      persistér AiAnalysis → prioritet → SLA → status
+```
+
+`POST /api/tickets` opretter billetten, enqueuer AI-jobbet i **samme transaktion** som EF-gemningen (Hangfire SQL-storage), og returnerer `201` med det samme. Et recurring sikkerhedsnet-job re-enqueuer billetter der hænger i `Ny`/`UnderAiAnalyse` (i tilfælde af crash mellem gem og enqueue).

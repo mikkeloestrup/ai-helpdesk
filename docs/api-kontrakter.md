@@ -293,7 +293,7 @@ Opret kategori.
 ---
 
 ### PUT /api/admin/categories/{id}
-Opdater kategori. Kategorier med aktive billetter kan ikke omdøbes til eksisterende kategorinavn.
+Opdater kategori. Billetter peger på `CategoryId` (rigtig FK), så omdøbning er altid sikker og påvirker ikke eksisterende billetter.
 
 ---
 

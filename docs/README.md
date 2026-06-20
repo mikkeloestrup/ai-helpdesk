@@ -16,7 +16,7 @@ Denne mappe indeholder al teknisk og forretningsmæssig dokumentation for projek
 ## Hurtig reference
 
 - **Repository:** mikkeloestrup/ai-helpdesk
-- **Stack:** .NET, ASP.NET Core Minimal API, EF Core, Semantic Kernel, Qdrant
-- **Arkitektur:** Clean Architecture med CQRS via MediatR
-- **AI-model:** Anthropic Claude (via Semantic Kernel)
-- **Vector DB:** Qdrant (lokal Docker under udvikling)
+- **Stack:** .NET Aspire, ASP.NET Core Minimal API, EF Core, Microsoft.Extensions.AI, Hangfire
+- **Arkitektur:** Simpel, feature-orienteret (vertical slices) — ét app-projekt, ingen mediator/bus
+- **AI-model:** Anthropic Claude (via Microsoft.Extensions.AI)
+- **Database:** SQL Server 2025 — relationelle data og vektorer (`VECTOR`-type) ét sted
