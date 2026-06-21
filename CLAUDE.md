@@ -57,7 +57,7 @@ These span multiple files and are easy to get wrong — consult the named doc:
 
 ## Tech stack
 
-.NET Aspire (single-file `apphost.cs`; runs SQL Server 2025 + an Ollama resource in dev) · ASP.NET Core Minimal API · EF Core + SQL Server 2025 (data **and** vectors) · Hangfire (SQL Server storage) · Microsoft.Extensions.AI — `IChatClient` (Gemma 3 12B via Ollama in dev / Claude in prod) + `IEmbeddingGenerator` (bge-m3, 1024 dim, same in all envs) · FluentValidation · built-in `Microsoft.Extensions.Logging` + OpenTelemetry (via ServiceDefaults, shown in Aspire dashboard) · xUnit + FluentAssertions + Bogus. **Not used:** MediatR, Semantic Kernel, Qdrant, Serilog, SQLite, Clean Architecture layering.
+.NET Aspire (single-file `apphost.cs`; runs SQL Server 2025 + an Ollama resource in dev) · ASP.NET Core Minimal API · EF Core + SQL Server 2025 (data **and** vectors) · Hangfire (SQL Server storage) · Microsoft.Extensions.AI — `IChatClient` (Gemma 3 12B via Ollama in dev / Claude in prod) + `IEmbeddingGenerator` (bge-m3, 1024 dim, same in all envs) · FluentValidation · built-in `Microsoft.Extensions.Logging` + OpenTelemetry (via ServiceDefaults, shown in Aspire dashboard) · xUnit + Reqnroll (BDD/Gherkin) + FluentAssertions + Bogus. **Not used:** MediatR, Semantic Kernel, Qdrant, Serilog, SQLite, Clean Architecture layering.
 
 ## Commands
 
