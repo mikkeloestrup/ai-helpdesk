@@ -18,5 +18,6 @@ Denne mappe indeholder al teknisk og forretningsmæssig dokumentation for projek
 - **Repository:** mikkeloestrup/ai-helpdesk
 - **Stack:** .NET Aspire, ASP.NET Core Minimal API, EF Core, Microsoft.Extensions.AI, Hangfire
 - **Arkitektur:** Simpel, feature-orienteret (vertical slices) — ét app-projekt, ingen mediator/bus
-- **AI-model:** Anthropic Claude (via Microsoft.Extensions.AI)
+- **Chat-model:** Ollama/Gemma 3 12B (dev) · Anthropic Claude (prod) — via Microsoft.Extensions.AI
+- **Embedding-model:** bge-m3 (1024 dim, self-hosted) — identisk i dev og prod
 - **Database:** SQL Server 2025 — relationelle data og vektorer (`VECTOR`-type) ét sted

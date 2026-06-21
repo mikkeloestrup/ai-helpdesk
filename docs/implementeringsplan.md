@@ -6,7 +6,10 @@
 |---|---|---|
 | `Aspire.Hosting.AppHost` | apphost.cs | Aspire-orkestrering (single-file AppHost) |
 | `Aspire.Hosting.SqlServer` | apphost.cs | SQL Server 2025-resource |
-| `Microsoft.Extensions.AI` | SupportSystem | `IChatClient` (Claude) + `IEmbeddingGenerator` |
+| `CommunityToolkit.Aspire.Hosting.Ollama` | apphost.cs | Ollama-resource i dev (Gemma 3 12B + bge-m3, model-pull) |
+| `Microsoft.Extensions.AI` | SupportSystem | `IChatClient` + `IEmbeddingGenerator` (provider pr. miljø) |
+| `OllamaSharp` | SupportSystem | Ollama-provider til M.E.AI (chat i dev + embedding) |
+| `Anthropic.SDK` (eller M.E.AI Anthropic-provider) | SupportSystem | Claude som `IChatClient` i prod |
 | `Microsoft.EntityFrameworkCore.SqlServer` | SupportSystem | ORM + SQL Server 2025 (inkl. `VECTOR`-type) |
 | `Hangfire.AspNetCore` | SupportSystem | Baggrundsjobs (AI-analyse, embedding, SLA-breach, lås-oprydning) |
 | `Hangfire.SqlServer` | SupportSystem | Hangfire-storage på SQL Server |
@@ -74,7 +77,8 @@
 
 11. **Vektorlager** — `VECTOR(1536)`-kolonne på `KnowledgeArticle`; verificér `VECTOR_DISTANCE` virker mod SQL Server 2025
 12. **Videnbase-administration** — `GET/POST/PUT/DELETE /api/admin/knowledge-articles`; ved upsert enqueues embedding-job
-13. **Embedding-service** — `IEmbeddingGenerator` via `Microsoft.Extensions.AI`; Hangfire-job beregner og gemmer embedding
+13. **Embedding-service** — `IEmbeddingGenerator` (bge-m3 via Ollama); Hangfire-job beregner og gemmer embedding. Samme model i dev/prod — `VECTOR(1024)`
+13a. **Chat-provider pr. miljø** — `IChatClient` registreres miljøafhængigt: Ollama/Gemma 3 12B (`format: json`) i dev, Claude i prod. `apphost.cs` tilføjer Ollama-resource i dev og pull'er Gemma 3 12B + bge-m3
 14. **RAG-søgning** — SQL-query med `VECTOR_DISTANCE`, filtrér similarity ≥ 0.70, top-3
 15. **AI-analysejob** — `TicketAiAnalysisJob` (Hangfire); fuld pipeline (se ai-pipeline.md); structured output med error handling og retry
 16. **Sentimenteskalering** — som del af AI-jobbet; opret automatisk intern note ved eskalering
@@ -102,10 +106,11 @@
 git clone https://github.com/mikkeloestrup/ai-helpdesk.git
 cd ai-helpdesk
 
-# Konfigurér AI-nøgle som Aspire-parameter (user secrets på AppHost)
-dotnet user-secrets set "Parameters:ai-api-key" "din-api-nøgle"   # i apphost-konteksten
+# Prod-nøgle (kun nødvendig hvis du kører prod-profil lokalt — dev bruger Ollama)
+dotnet user-secrets set "Parameters:anthropic-api-key" "din-api-nøgle"   # i apphost-konteksten
 
-# Start alt via Aspire (starter SQL Server 2025-container, appen og dashboard)
+# Start alt via Aspire (starter SQL Server 2025 + Ollama-container, pull'er Gemma 3 12B + bge-m3,
+# starter appen og dashboard). Første kørsel henter modellerne — det tager lidt tid.
 aspire run            # eller: dotnet run apphost.cs
 
 # Aspire-dashboard viser app-URL, logs, traces og metrics.

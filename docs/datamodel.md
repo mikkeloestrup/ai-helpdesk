@@ -88,13 +88,13 @@ AiAnalysis N ──── N KnowledgeArticle  (SourceArticles — EF skip-naviga
 | Title | string | Artiklens titel |
 | Content | string | Indhold i Markdown-format |
 | Tags | List\<string\> | Kategori-tags til filtrering |
-| Embedding | VECTOR(1536)? | Embedding af Title+Content (SQL Server `VECTOR`-kolonne, nullable indtil beregnet) |
+| Embedding | VECTOR(1024)? | Embedding af Title+Content (SQL Server `VECTOR`-kolonne, nullable indtil beregnet) |
 | IsActive | bool | Inaktive artikler udelukkes fra RAG |
 | TimesUsedInRag | int | Tæller — inkrementeres ved hvert RAG-hit |
 | CreatedAt | DateTime | Oprettelsestidspunkt |
 | UpdatedAt | DateTime | Senest opdateret |
 
-> `Embedding` (re)beregnes af et Hangfire-job ved oprettelse/opdatering af artiklen. Vektorstørrelsen 1536 matcher `text-embedding-3-small`; justér hvis embedding-model ændres.
+> `Embedding` (re)beregnes af et Hangfire-job ved oprettelse/opdatering af artiklen. Vektorstørrelsen 1024 matcher embedding-modellen **bge-m3**. **Embedding-modellen skal være identisk i dev og prod** — persisterede artikel-vektorer og query-vektoren skal ligge i samme vektorrum, ellers skal hele videnbasen re-embeddes. (Chat-modellen må derimod gerne variere pr. miljø.)
 
 ### Agent
 

@@ -37,8 +37,9 @@ ai-helpdesk/
 | Database | SQL Server 2025 (dev + prod) | Native `VECTOR`-type → data og embeddings ét sted; LocalDB/container i dev |
 | Vektorsøgning | SQL Server `VECTOR_DISTANCE` | Indbygget cosine-søgning — ingen ekstern vector-DB |
 | Validering | FluentValidation | Deklarativ; kaldes via endpoint-filter |
-| AI-klient | Microsoft.Extensions.AI | `IChatClient` (Claude) + `IEmbeddingGenerator` — let abstraktion uden Semantic Kernel |
-| AI-model | Anthropic Claude | Chat + structured output |
+| AI-klient | Microsoft.Extensions.AI | `IChatClient` + `IEmbeddingGenerator` — provider vælges pr. miljø, uden Semantic Kernel |
+| Chat-model | Ollama/Gemma 3 12B (dev) · Claude (prod) | Stateless → må variere pr. miljø; se ai-pipeline.md |
+| Embedding-model | bge-m3 (1024 dim, self-hosted) | Multilingual; **identisk i dev og prod** (delt vektorrum) |
 | Baggrundsjobs | Hangfire (SQL Server storage) | Retries, dashboard, transaktionel enqueue sammen med EF |
 | Logging | Microsoft.Extensions.Logging + OpenTelemetry | Struktureret logging via built-in + OTel; vist i Aspire-dashboard |
 | Test | xUnit + FluentAssertions + Bogus | Standard .NET teststack |

@@ -47,14 +47,15 @@ These span multiple files and are easy to get wrong — consult the named doc:
 - **Priority** is computed after AI analysis, rules evaluated in order, first match wins; `TydeligFrustreret` sentiment forces `Kritisk` and escalation. Agents can manually override.
 - **SLA** is measured in Danish business hours (08:00–17:00 Mon–Fri, holidays excluded). `SlaDeadline` set at AI-analysis completion; a Hangfire job sets `SlaBreach` every 5 min.
 - **Locking**: opening a ticket sets `LockedByAgentId` + `LockedUntil = now + 10min`; a second agent gets `423 Locked`. Renewed via `keepalive`, released on reply/close/timeout; a Hangfire job clears expired locks each minute.
-- **AI pipeline** (`ai-pipeline.md`) runs as Hangfire job `TicketAiAnalysisJob`: embedding (`IEmbeddingGenerator`) → SQL Server vector search (`VECTOR_DISTANCE('cosine', …)`, similarity ≥ 0.70 i.e. distance ≤ 0.30, top-3, empty context if none) → Claude via `IChatClient` with enforced JSON structured output → persist `AiAnalysis` → map suggested category → priority → SLA → status. 45s budget. Handle: LLM timeout, invalid JSON (retry once then manual), vector query fails (skip RAG), confidence < 0.6 (category → `Ukendt`, priority → `Høj`).
+- **AI pipeline** (`ai-pipeline.md`) runs as Hangfire job `TicketAiAnalysisJob`: embedding (`IEmbeddingGenerator`) → SQL Server vector search (`VECTOR_DISTANCE('cosine', …)`, similarity ≥ 0.70 i.e. distance ≤ 0.30, top-3, empty context if none) → chat model via `IChatClient` with enforced JSON structured output → persist `AiAnalysis` → map suggested category → priority → SLA → status. 45s budget. Handle: LLM timeout, invalid JSON (retry once then manual), vector query fails (skip RAG), confidence < 0.6 (category → `Ukendt`, priority → `Høj`).
+- **AI provider per environment** (`ai-pipeline.md`): `IChatClient` is environment-configured — **dev: Gemma 3 12B via Ollama** (`format: json`), **prod: Claude**. Chat is stateless so it may differ. The **embedding model (`bge-m3`, 1024 dim) must be identical in dev and prod** — persisted article vectors and the query vector share one space; changing it means re-embedding the whole knowledge base and changing the `VECTOR` dimension.
 - **Two category concepts** (don't conflate — this was a fixed smell): `AiCategory` is the AI's fixed classification enum (`Fakturering`/`TekniskFejl`/`Konto`/`Generelt`/`Ukendt`), stored raw on `AiAnalysis.SuggestedCategory`. The operational category is the admin-managed `Category` **table**, referenced by `Ticket.CategoryId` (a real FK — categories rename freely). The pipeline maps the AI suggestion to a seeded `Category` row.
 - **`AiAnalysis ↔ KnowledgeArticle`** is a real EF Core many-to-many via skip navigation (`AiAnalysis.SourceArticles`), implicit join table — not a serialized `List<Guid>`.
 - **AI feedback loop**: every agent reply carries `aiFeedback` (`Accepteret`/`RedigeretOgSendt`/`Afvist`), persisted on `AiAnalysis` and aggregated in reports.
 
 ## Tech stack
 
-.NET Aspire (single-file `apphost.cs`) · ASP.NET Core Minimal API · EF Core + SQL Server 2025 (data **and** vectors) · Hangfire (SQL Server storage) · Microsoft.Extensions.AI (`IChatClient` → Claude, `IEmbeddingGenerator`) · FluentValidation · built-in `Microsoft.Extensions.Logging` + OpenTelemetry (via ServiceDefaults, shown in Aspire dashboard) · xUnit + FluentAssertions + Bogus. **Not used:** MediatR, Semantic Kernel, Qdrant, Serilog, SQLite, Clean Architecture layering.
+.NET Aspire (single-file `apphost.cs`; runs SQL Server 2025 + an Ollama resource in dev) · ASP.NET Core Minimal API · EF Core + SQL Server 2025 (data **and** vectors) · Hangfire (SQL Server storage) · Microsoft.Extensions.AI — `IChatClient` (Gemma 3 12B via Ollama in dev / Claude in prod) + `IEmbeddingGenerator` (bge-m3, 1024 dim, same in all envs) · FluentValidation · built-in `Microsoft.Extensions.Logging` + OpenTelemetry (via ServiceDefaults, shown in Aspire dashboard) · xUnit + FluentAssertions + Bogus. **Not used:** MediatR, Semantic Kernel, Qdrant, Serilog, SQLite, Clean Architecture layering.
 
 ## Commands
 
@@ -75,8 +76,8 @@ dotnet test --filter "FullyQualifiedName~StatusMachine"   # single test/class
 dotnet ef migrations add <Name> --project SupportSystem
 dotnet ef database update
 
-# AI key as Aspire parameter (user-secrets in the apphost context)
-dotnet user-secrets set "Parameters:ai-api-key" "<key>"
+# Prod Claude key as Aspire parameter (only needed for the prod profile; dev uses Ollama)
+dotnet user-secrets set "Parameters:anthropic-api-key" "<key>"
 ```
 
 ## Conventions

@@ -20,8 +20,8 @@ POST /api/tickets
               ├─► Sæt status → UnderAiAnalyse
               │
               ├─► [EMBEDDING]
-              │   Embed Subject + Description via
-              │   Microsoft.Extensions.AI IEmbeddingGenerator
+              │   Embed Subject + Description via IEmbeddingGenerator
+              │   (bge-m3, 1024 dim — samme model i dev og prod)
               │
               ├─► [VEKTORSØGNING — SQL Server]
               │   SELECT TOP 3 … VECTOR_DISTANCE('cosine', Embedding, @query) AS Distance
@@ -33,7 +33,8 @@ POST /api/tickets
               │   System prompt + artikel-kontekst + billet-tekst
               │
               ├─► [LLM KALD]
-              │   IChatClient → Claude, structured output (se schema nedenfor)
+              │   IChatClient → chat-model, structured output (se schema nedenfor)
+              │   (dev: Gemma 3 12B via Ollama · prod: Claude — se Model-opsætning)
               │
               ├─► [PERSISTERING]
               │   Gem AiAnalysis (inkl. SourceArticles-navigation)
@@ -95,12 +96,26 @@ Beskrivelse: {{DESCRIPTION}}
 
 ## RAG-søgning
 
-- **Embedding-model:** `text-embedding-3-small` (1536 dim) eller tilsvarende via `IEmbeddingGenerator`
+- **Embedding-model:** `bge-m3` (1024 dim, multilingual inkl. dansk) via `IEmbeddingGenerator`
 - **Lager:** SQL Server 2025 `VECTOR`-kolonne på `KnowledgeArticle.Embedding` — ingen separat vector-DB
 - **Søgestrategi:** `VECTOR_DISTANCE('cosine', …)`, `ORDER BY` distance, `TOP 3`
 - **Minimumsscore:** similarity 0.70 (dvs. cosine-distance ≤ 0.30) — artikler under tærsklen udelukkes
 - **Fallback:** Hvis ingen artikler rammer tærsklen, genereres svar uden kontekst
 - **Indeksering:** Embeddings (re)beregnes af et Hangfire-job ved oprettelse/opdatering af artikler
+
+## Model-opsætning (lokal dev / prod)
+
+AI-laget går gennem `Microsoft.Extensions.AI`, så provider vælges pr. miljø i DI — resten af pipelinen er uændret.
+
+| Rolle | Dev | Prod | Skift pr. miljø? |
+|---|---|---|---|
+| Chat (`IChatClient`) | Gemma 3 12B via **Ollama** (`format: json`) | **Claude** (Anthropic) | Ja — stateless, sikkert at variere |
+| Embedding (`IEmbeddingGenerator`) | **bge-m3** (self-hosted, Ollama) | **bge-m3** (self-hosted) | **Nej — skal være identisk** |
+
+- **Embedding-modellen må aldrig variere mellem miljøer:** persisterede artikel-vektorer og query-vektoren skal ligge i samme vektorrum. Skifter du embedder, skal hele videnbasen re-embeddes og `VECTOR`-dimensionen ændres.
+- **Structured output lokalt:** Gemma er mindre stensikker på JSON end Claude — brug Ollamas `format: json` (eller GBNF-grammar). `retry-én-gang`-reglen ovenfor er vigtigst i dev.
+- **Dansk-kvalitet:** `suggestedReply` er kundevendt — test 12B-svarene specifikt. Prod kører Claude, så den primære risiko er dev-svar der ser anderledes ud end produktion.
+- **VRAM (RTX 4070, 12 GB):** chat- og embedding-model deles om pladsen; Ollama swapper evt. modeller pr. kørsel. Hæv `keep_alive` eller brug en mindre chat-model hvis model-load-latency presser 45s-budgettet.
 
 ## Fejlhåndtering
 
