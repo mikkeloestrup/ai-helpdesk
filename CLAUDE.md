@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo currently contains **only documentation** — no source code, solution, or projects exist yet. The `docs/` folder is the authoritative specification for a .NET learning project (`SupportSystem`) that has not been scaffolded. Before writing code, read the relevant doc(s); they define the contracts, data model, and business rules the implementation must match. The docs are written in **Danish** — domain terms (statuses, enums, categories) are Danish identifiers and must be kept verbatim in code (e.g. `TicketStatus.ÅbenUtildelt`, `Sentiment.TydeligFrustreret`).
+The solution is **scaffolded** (issues #15 + #16 done): single-file Aspire AppHost (`apphost.cs`), `SupportSystem` app (Domain entities + status machine, `SupportDbContext` with Initial migration + seed, Hangfire on SQL Server, AI clients per environment), `SupportSystem.ServiceDefaults`, and `SupportSystem.Tests`. Build is green and tests pass. **Feature endpoints are still stubs** (`Features/*/*Endpoints.cs`) — the user-story issues (#1–#14) implement them. The `docs/` folder remains the authoritative specification for contracts, data model, and business rules — read the relevant doc before implementing a feature. The docs and domain identifiers are **Danish** and must be kept verbatim in code (e.g. `TicketStatus.ÅbenUtildelt`, `Sentiment.TydeligFrustreret`).
+
+Note on the embedding column: EF Core 10 maps `float[]` as a JSON primitive collection, which conflicts with SQL Server's `VECTOR` type. So `KnowledgeArticle.Embedding` is `Ignore`d in `SupportDbContext` and the real `vector(1024)` column is created via raw SQL in the Initial migration; vector read/write is handled SQL-side in the embedding job (issue #13).
 
 Documentation map (`docs/`):
 - `arkitektur.md` — structure, design principles, technology choices, communication flow
