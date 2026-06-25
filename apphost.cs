@@ -7,7 +7,7 @@ using Microsoft.Extensions.Hosting;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// SQL Server 2025 — relationelle data + native VECTOR-type (data og vektorer ét sted)
+// SQL Server 2025 — relationelle data + native VECTOR-type (data og vektorer ét sted) :)
 var sql = builder.AddSqlServer("sql")
     .WithImageTag("2025-latest")
     .WithDataVolume();
