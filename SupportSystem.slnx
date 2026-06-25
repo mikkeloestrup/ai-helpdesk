@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="SupportSystem.ServiceDefaults/SupportSystem.ServiceDefaults.csproj" />
+  <Project Path="SupportSystem.Tests/SupportSystem.Tests.csproj" />
+  <Project Path="SupportSystem/SupportSystem.csproj" />
+</Solution>

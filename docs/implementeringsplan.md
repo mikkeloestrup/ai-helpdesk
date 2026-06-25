@@ -16,6 +16,7 @@
 | `FluentValidation` | SupportSystem | Request-validering (via endpoint-filter) |
 | `Swashbuckle.AspNetCore` | SupportSystem | Swagger/OpenAPI dokumentation |
 | `xUnit` | Tests | Test framework |
+| `Reqnroll.xUnit` | Tests | BDD/Gherkin-scenarier (kører på xUnit) |
 | `FluentAssertions` | Tests | Læsbare assertions |
 | `Bogus` | Tests | Realistisk testdatagenerering |
 

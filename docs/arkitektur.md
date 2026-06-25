@@ -42,7 +42,7 @@ ai-helpdesk/
 | Embedding-model | bge-m3 (1024 dim, self-hosted) | Multilingual; **identisk i dev og prod** (delt vektorrum) |
 | Baggrundsjobs | Hangfire (SQL Server storage) | Retries, dashboard, transaktionel enqueue sammen med EF |
 | Logging | Microsoft.Extensions.Logging + OpenTelemetry | Struktureret logging via built-in + OTel; vist i Aspire-dashboard |
-| Test | xUnit + FluentAssertions + Bogus | Standard .NET teststack |
+| Test | xUnit + Reqnroll + FluentAssertions + Bogus | Unit + BDD (Gherkin) teststack |
 
 ## Kommunikationsflow
 
